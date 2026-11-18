@@ -1,11 +1,15 @@
 # The World Today — Wednesday 18 November 2026
 
+[![make.fun · news-image-20261118](https://make.fun/badge/news-image-20261118.svg)](https://make.fun/bounty/news-image-20261118?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261118)
+[![rank](https://make.fun/badge/news-image-20261118/dengzy1998/world-news-2026-11-18/rank.svg)](https://make.fun/bounty/news-image-20261118/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261118)
+[![reward](https://make.fun/badge/news-image-20261118/dengzy1998/world-news-2026-11-18/reward.svg)](https://make.fun/bounty/news-image-20261118?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261118)
+
 A newspaper front page that sums up 18 November 2026 in a single image,
 drawn entirely in code with Pillow. No photographs, no external images,
 no network access at run time.
 
 Built for the make.fun competition
-[`news-image-20261118`](https://make.fun/competitions/news-image-20261118)
+[`news-image-20261118`](https://make.fun/bounty/news-image-20261118)
 — "Sum up 18 November's world news in one image".
 
 ![The World Today, 18 November 2026](entry.png)
