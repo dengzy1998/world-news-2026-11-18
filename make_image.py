@@ -1,308 +1,525 @@
-#!/usr/bin/env python3
-"""Render the front page of THE WORLD TODAY for 18 November 2026.
+"""Draw a newspaper front page summing up world news on 18 November 2026.
 
-Draws a 1024x1024 newspaper front page with Pillow and saves it as
-entry.png in this directory. Every drawing call is deterministic: no
-randomness, no timestamps, no network.
+Everything on the page is drawn from scratch with Pillow primitives:
+no photographs, no external images, no network access at run time.
+The output is fully deterministic: running this module twice produces
+byte-identical PNG files.
 """
+
 import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1024, 1024
-PAPER = (247, 242, 231)
-INK = (20, 20, 20)
-RED = (178, 34, 34)
-NAVY = (31, 42, 68)
-GREY = (90, 86, 76)
-PANEL = (255, 253, 246)
-SEA = (46, 98, 140)
-GOLD = (201, 162, 39)
-GREEN = (34, 139, 34)
+WIDTH = 1024
+HEIGHT = 1024
 
-FONT_DIR = "/usr/share/fonts/truetype/noto"
-SERIF_BLACK = os.path.join(FONT_DIR, "NotoSerif-Black.ttf")
-SERIF_BOLD = os.path.join(FONT_DIR, "NotoSerif-Bold.ttf")
-SERIF = os.path.join(FONT_DIR, "NotoSerif-Regular.ttf")
-SANS_BOLD = os.path.join(FONT_DIR, "NotoSans-Bold.ttf")
+PAPER = (246, 241, 227)      # warm newsprint cream
+INK = (18, 18, 18)           # near-black ink
+RED = (178, 34, 34)          # headline accent red
+BLUE = (31, 78, 121)         # deep news blue
+SKY = (178, 210, 232)
+SEA = (64, 116, 158)
+SEA_DARK = (38, 84, 122)
+GREEN = (34, 120, 62)
+GOLD = (198, 148, 42)
+GREY = (110, 110, 105)
+LIGHT_GREY = (210, 205, 190)
 
-
-def font(path, size):
-    return ImageFont.truetype(path, size)
+FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
 
-def wrap(draw, text, fnt, max_width):
-    """Greedy word wrap; returns a list of lines that fit max_width."""
-    words = text.split()
-    lines, cur = [], ""
-    for word in words:
-        trial = f"{cur} {word}".strip()
-        if draw.textlength(trial, font=fnt) <= max_width:
-            cur = trial
-        else:
-            if cur:
-                lines.append(cur)
-            cur = word
-    if cur:
-        lines.append(cur)
+def _font(name, size):
+    return ImageFont.truetype(os.path.join(FONT_DIR, name), size)
+
+
+SERIF_BOLD = lambda s: _font("DejaVuSerif-Bold.ttf", s)     # noqa: E731
+SANS_BOLD = lambda s: _font("DejaVuSans-Bold.ttf", s)       # noqa: E731
+SANS = lambda s: _font("DejaVuSans.ttf", s)                 # noqa: E731
+SERIF = lambda s: _font("DejaVuSerif.ttf", s)               # noqa: E731
+
+
+def wrap(draw, text, font, max_width):
+    """Split text into lines that fit inside max_width pixels."""
+    lines = []
+    for paragraph in text.split("\n"):
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+        current = words[0]
+        for word in words[1:]:
+            trial = current + " " + word
+            if draw.textlength(trial, font=font) <= max_width:
+                current = trial
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
     return lines
 
 
-def fit_lines(draw, text, path, max_size, max_width, max_lines):
-    """Largest font size (down from max_size) whose wrap fits max_lines."""
-    for size in range(max_size, 15, -1):
-        fnt = font(path, size)
-        lines = wrap(draw, text, fnt, max_width)
-        if len(lines) <= max_lines:
-            return fnt, lines
-    fnt = font(path, 16)
-    return fnt, wrap(draw, text, fnt, max_width)
+def centred(draw, cx, y, text, font, fill=INK):
+    """Draw text centred horizontally on cx at height y."""
+    width = draw.textlength(text, font=font)
+    draw.text((cx - width / 2, y), text, font=font, fill=fill)
+    return y + font.size
 
 
-def centre(draw, y, text, fnt, fill, cx=W // 2):
-    w = draw.textlength(text, font=fnt)
-    draw.text((cx - w / 2, y), text, font=fnt, fill=fill)
-    return y + fnt.size
+def rule(draw, x0, x1, y, width=2, fill=INK):
+    draw.line([(x0, y), (x1, y)], fill=fill, width=width)
 
 
-def draw_flag(draw, x, y, w, h, kind):
-    """A small flag on a pole at (x, y), w x h, kind in CN/US/RU."""
-    draw.line([(x + w // 2, y), (x + w // 2, y - 34)], fill=INK, width=3)
-    if kind == "CN":
-        draw.rectangle([x, y - 34, x + w, y - 34 + h], fill=(222, 41, 16))
-        draw.text((x + 4, y - 34 + 2), "\u2605", font=font(SANS_BOLD, 12),
-                  fill=(255, 222, 0))
-    elif kind == "US":
-        for i in range(7):
-            col = (178, 34, 52) if i % 2 == 0 else (255, 255, 255)
-            draw.rectangle([x, y - 34 + i * h // 7, x + w,
-                            y - 34 + (i + 1) * h // 7], fill=col)
-        draw.rectangle([x, y - 34, x + w // 2, y - 34 + 4 * h // 7],
-                       fill=(60, 59, 110))
-    else:  # RU
-        for i, col in enumerate([(255, 255, 255), (0, 57, 166),
-                                (213, 0, 50)]):
-            draw.rectangle([x, y - 34 + i * h // 3, x + w,
-                            y - 34 + (i + 1) * h // 3], fill=col)
-    draw.rectangle([x, y - 34, x + w, y - 34 + h], outline=INK, width=1)
+def panel_frame(draw, box, fill=(255, 255, 255)):
+    """A bordered panel box; returns the inner rectangle."""
+    x0, y0, x1, y1 = box
+    draw.rectangle([x0, y0, x1, y1], fill=fill, outline=INK, width=2)
+    return (x0 + 2, y0 + 2, x1 - 2, y1 - 2)
 
 
-def draw_bridge(draw, x, y, w, h):
-    """Kerch bridge with a broken span: deck, towers, sea, smoke."""
-    draw.rectangle([x, y + h - 46, x + w, y + h], fill=SEA)
-    for i in range(3):
-        sx = x + 20 + i * 52
-        draw.arc([sx, y + h - 66, sx + 44, y + h - 22], 180, 360,
-                 fill=(255, 255, 255), width=3)
-    # towers
-    for tx in (x + 62, x + w - 82):
-        draw.rectangle([tx, y + 22, tx + 16, y + h - 46], fill=(70, 70, 70))
-    # deck in two pieces with a gap in the middle
-    draw.rectangle([x, y + 78, x + w // 2 - 26, y + 92], fill=(40, 40, 40))
-    draw.rectangle([x + w // 2 + 26, y + 78, x + w, y + 92], fill=(40, 40, 40))
-    # cables
-    for cx in range(x + 10, x + w // 2 - 30, 26):
-        draw.line([(cx, y + 78), (x + 70, y + 26)], fill=GREY, width=2)
-    for cx in range(x + w // 2 + 34, x + w - 6, 26):
-        draw.line([(cx, y + 78), (x + w - 74, y + 26)], fill=GREY, width=2)
+def tag(draw, x, y, text, fill=RED):
+    """Small white-on-colour section label; returns the y below it."""
+    font = SANS_BOLD(15)
+    w = draw.textlength(text, font=font) + 14
+    draw.rectangle([x, y, x + w, y + 21], fill=fill)
+    draw.text((x + 7, y + 2), text, font=font, fill=(255, 255, 255))
+    return y + 21
+
+
+# ---------------------------------------------------------------------------
+# Illustrations. Each draws one small scene inside the given box.
+# All coordinates are relative to the box, so every picture is simple
+# geometry: rectangles, ellipses, polygons, arcs and lines.
+# ---------------------------------------------------------------------------
+
+
+def draw_bridge(draw, box):
+    """The Kerch Bridge: a road deck broken in the middle, arch in the sea."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y0 + int(h * 0.58)], fill=SKY)
+    draw.rectangle([x0, y0 + int(h * 0.58), x1, y1], fill=SEA)
+    # sun
+    draw.ellipse([x0 + w - 66, y0 + 12, x0 + w - 26, y0 + 52],
+                 fill=(240, 200, 90))
+    # far shore
+    draw.polygon([(x0, y0 + int(h * 0.58)), (x0 + w, y0 + int(h * 0.58)),
+                  (x0 + w, y0 + int(h * 0.5)), (x0, y0 + int(h * 0.52))],
+                 fill=(120, 140, 110))
+    deck_y = y0 + int(h * 0.42)
+    # pillars
+    for px in (0.10, 0.30, 0.72, 0.90):
+        px0 = x0 + int(w * px)
+        draw.rectangle([px0, deck_y, px0 + 8, y0 + h], fill=(90, 90, 88))
+    # deck: left span, gap, right span
+    gap0 = x0 + int(w * 0.44)
+    gap1 = x0 + int(w * 0.62)
+    draw.rectangle([x0, deck_y, gap0, deck_y + 10], fill=(52, 52, 50))
+    draw.rectangle([gap1, deck_y, x1, deck_y + 10], fill=(52, 52, 50))
+    # standing arch over the left span
+    draw.arc([x0 + int(w * 0.12), deck_y - 46, x0 + int(w * 0.40),
+              deck_y + 26], start=180, end=360, fill=RED, width=6)
+    # fallen arch, tilted, half sunk in the strait
+    draw.arc([gap0 - 6, deck_y + 2, gap1 + 34, deck_y + 64],
+             start=200, end=340, fill=RED, width=6)
+    draw.line([(gap0 + 4, deck_y + 10), (gap0 + 40, deck_y + 52)],
+              fill=RED, width=5)
+    # broken deck edge
+    draw.polygon([(gap0, deck_y + 10), (gap0 + 14, deck_y + 10),
+                  (gap0 + 6, deck_y + 30)], fill=(52, 52, 50))
+    draw.polygon([(gap1, deck_y + 10), (gap1 - 12, deck_y + 10),
+                  (gap1 - 4, deck_y + 28)], fill=(52, 52, 50))
     # smoke from the gap
-    for i, r in enumerate((16, 12, 9)):
-        cx = x + w // 2 + (i - 1) * 8
-        cy = y + 58 - i * 12
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(120, 120, 120))
-    # red burst marker
-    draw.ellipse([x + w // 2 - 10, y + 66, x + w // 2 + 10, y + 86],
-                 fill=RED)
+    for cx, cy, r in ((0.50, 0.30, 13), (0.55, 0.22, 17), (0.47, 0.18, 11)):
+        draw.ellipse([x0 + int(w * cx) - r, y0 + int(h * cy) - r,
+                      x0 + int(w * cx) + r, y0 + int(h * cy) + r],
+                     fill=(150, 150, 148))
+    # waves around the wreck
+    for wy in (0.72, 0.82, 0.92):
+        yy = y0 + int(h * wy)
+        for kx in range(0, 7):
+            kx0 = x0 + int(w * (0.06 + kx * 0.14))
+            draw.arc([kx0, yy, kx0 + 26, yy + 10], start=180, end=360,
+                     fill=(220, 230, 238), width=2)
 
 
-def draw_gulf(draw, x, y, w, h):
-    """Gulf at night: tanker on a dark sea, flames, missile streak."""
-    draw.rectangle([x, y, x + w, y + h], fill=(24, 32, 48))
-    draw.rectangle([x, y + h - 40, x + w, y + h], fill=SEA)
-    for i in range(3):
-        sx = x + 16 + i * 58
-        draw.arc([sx, y + h - 58, sx + 46, y + h - 18], 180, 360,
-                 fill=(255, 255, 255), width=3)
-    # hull
-    draw.polygon([(x + 12, y + 96), (x + w - 12, y + 96),
-                  (x + w - 34, y + 128), (x + 34, y + 128)], fill=(32, 32, 40))
-    draw.rectangle([x + 12, y + 88, x + w - 12, y + 96], fill=(178, 34, 34))
-    # containers
-    for i, col in enumerate([(201, 162, 39), (46, 98, 140), (201, 162, 39)]):
-        draw.rectangle([x + 40 + i * 52, y + 58, x + 82 + i * 52, y + 88],
-                       fill=col, outline=INK, width=1)
-    # flames on deck
-    for fx, fh in ((x + 56, 30), (x + 82, 40), (x + 108, 26)):
-        draw.polygon([(fx - 12, y + 58), (fx, y + 58 - fh),
-                      (fx + 12, y + 58)], fill=(255, 120, 0))
-        draw.polygon([(fx - 7, y + 58), (fx, y + 58 - fh + 12),
-                      (fx + 7, y + 58)], fill=(255, 210, 0))
-    # missile streak top right with burst
-    draw.line([(x + w - 90, y + 18), (x + w - 34, y + 44)], fill=GOLD, width=4)
-    draw.ellipse([x + w - 44, y + 34, x + w - 14, y + 64], fill=(255, 120, 0))
-    draw.ellipse([x + w - 36, y + 42, x + w - 22, y + 56], fill=(255, 210, 0))
+def draw_gulf(draw, box):
+    """Qeshm Island in the Strait of Hormuz: a blast, a jet, a radar dish."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(24, 38, 58))
+    # stars
+    for sx, sy in ((0.12, 0.15), (0.30, 0.08), (0.55, 0.18), (0.82, 0.10),
+                   (0.92, 0.30), (0.07, 0.42)):
+        draw.ellipse([x0 + int(w * sx), y0 + int(h * sy),
+                      x0 + int(w * sx) + 3, y0 + int(h * sy) + 3],
+                     fill=(255, 255, 255))
+    # sea
+    draw.rectangle([x0, y0 + int(h * 0.62), x1, y1], fill=SEA_DARK)
+    # island silhouette
+    draw.polygon([(x0 + int(w * 0.18), y0 + int(h * 0.62)),
+                  (x0 + int(w * 0.38), y0 + int(h * 0.44)),
+                  (x0 + int(w * 0.62), y0 + int(h * 0.48)),
+                  (x0 + int(w * 0.82), y0 + int(h * 0.62))],
+                 fill=(74, 92, 66))
+    # explosion starburst over the island
+    ex, ey = x0 + int(w * 0.50), y0 + int(h * 0.38)
+    for dx, dy in ((-26, -14), (-8, -30), (12, -26), (28, -8), (30, 12),
+                   (10, 26), (-12, 24), (-30, 6)):
+        draw.line([(ex, ey), (ex + dx, ey + dy)], fill=(250, 190, 60),
+                  width=4)
+    draw.ellipse([ex - 12, ey - 12, ex + 12, ey + 12], fill=(250, 220, 120))
+    # jet silhouette
+    jx, jy = x0 + int(w * 0.78), y0 + int(h * 0.16)
+    draw.polygon([(jx, jy), (jx + 26, jy + 6), (jx, jy + 10),
+                  (jx + 4, jy + 5)], fill=(200, 200, 200))
+    draw.line([(jx, jy + 5), (jx - 16, jy + 5)], fill=(250, 190, 60),
+              width=3)
+    # radar dish on a small base
+    rx, ry = x0 + int(w * 0.14), y0 + int(h * 0.50)
+    draw.arc([rx - 16, ry - 16, rx + 16, ry + 16], start=200, end=340,
+             fill=(220, 220, 220), width=4)
+    draw.line([(rx, ry), (rx - 6, ry + 18)], fill=(220, 220, 220), width=3)
+    # three small drones heading right
+    for k in range(3):
+        dx = x0 + int(w * (0.60 + k * 0.07))
+        dy = y0 + int(h * (0.66 + k * 0.06))
+        draw.ellipse([dx, dy, dx + 7, dy + 4], fill=(230, 230, 230))
 
 
-def draw_summit(draw, x, y, w, h):
-    """Three flags (China, US, Russia) behind a summit table."""
-    draw.rectangle([x, y, x + w, y + h], fill=(232, 226, 210))
-    d_table = y + h - 34
-    draw.rectangle([x + 8, d_table, x + w - 8, d_table + 10], fill=(120, 72, 32))
-    draw.rectangle([x + 8, d_table + 10, x + w - 8, d_table + 14],
-                   fill=(90, 54, 24))
-    for i, kind in enumerate(("CN", "US", "RU")):
-        draw_flag(draw, x + 24 + i * 66, d_table, 46, 28, kind)
-    # three chairs behind the table
-    for cx in (x + 47, x + 113, x + 179):
-        draw.rectangle([cx - 16, d_table - 2, cx + 16, d_table + 2],
-                       fill=(70, 70, 70))
+def draw_summit(draw, box):
+    """Three flags above a table: the Shenzhen trilateral."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(232, 226, 208))
+    flag_w = int(w * 0.24)
+    flag_h = int(h * 0.42)
+    fy = y0 + int(h * 0.10)
+    # United States: stripes and blue canton
+    ux = x0 + int(w * 0.07)
+    for s in range(7):
+        colour = (178, 34, 52) if s % 2 == 0 else (255, 255, 255)
+        draw.rectangle([ux, fy + s * flag_h // 7, ux + flag_w,
+                        fy + (s + 1) * flag_h // 7], fill=colour)
+    draw.rectangle([ux, fy, ux + flag_w // 2, fy + flag_h // 2],
+                   fill=(40, 60, 120))
+    # China: red field, one large gold star
+    cx = x0 + int(w * 0.38)
+    draw.rectangle([cx, fy, cx + flag_w, fy + flag_h], fill=(222, 41, 16))
+    draw.ellipse([cx + 10, fy + 8, cx + 26, fy + 24], fill=GOLD)
+    # Russia: white, blue, red tricolour
+    rx = x0 + int(w * 0.69)
+    for s, colour in enumerate(((255, 255, 255), (0, 57, 166),
+                               (213, 0, 50))):
+        draw.rectangle([rx, fy + s * flag_h // 3, rx + flag_w,
+                        fy + (s + 1) * flag_h // 3], fill=colour)
+    # table and three chairs
+    ty = y0 + int(h * 0.74)
+    draw.rectangle([x0 + int(w * 0.08), ty, x1 - int(w * 0.08),
+                    ty + 8], fill=(120, 72, 30))
+    for lx in (0.12, 0.88):
+        draw.rectangle([x0 + int(w * lx), ty + 8, x0 + int(w * lx) + 6,
+                        y1 - 4], fill=(90, 54, 22))
+    for cxp in (0.18, 0.50, 0.82):
+        px = x0 + int(w * cxp)
+        draw.ellipse([px - 9, ty - 30, px + 9, ty - 12], fill=(52, 52, 50))
+        draw.rectangle([px - 7, ty - 12, px + 7, ty], fill=(52, 52, 50))
 
 
-def draw_virus(draw, x, y, r, col):
-    """Spiky virus circle."""
-    for ang in range(0, 360, 30):
-        import math
-        rad = math.radians(ang)
-        x1 = x + int(r * 0.9 * math.cos(rad))
-        y1 = y + int(r * 0.9 * math.sin(rad))
-        x2 = x + int(r * 1.35 * math.cos(rad))
-        y2 = y + int(r * 1.35 * math.sin(rad))
-        draw.line([(x1, y1), (x2, y2)], fill=col, width=3)
-    draw.ellipse([x - r, y - r, x + r, y + r], fill=col)
+def draw_measles(draw, box):
+    """Spiky virus balls over a rising case chart."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(250, 238, 232))
+    # virus: red disc with spikes
+    for vx, vy, r in ((0.24, 0.30, 20), (0.70, 0.24, 15)):
+        cx, cy = x0 + int(w * vx), y0 + int(h * vy)
+        for k in range(10):
+            ang = k * 36
+            import math
+            dx = int((r + 8) * math.cos(math.radians(ang)))
+            dy = int((r + 8) * math.sin(math.radians(ang)))
+            draw.line([(cx, cy), (cx + dx, cy + dy)], fill=RED, width=3)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=RED)
+        draw.ellipse([cx - r // 2, cy - r // 2, cx - r // 4, cy - r // 4],
+                     fill=(255, 150, 140))
+    # bar chart of cases, rising steeply
+    base = y0 + int(h * 0.88)
+    for k, bh in enumerate((0.12, 0.20, 0.30, 0.44)):
+        bx = x0 + int(w * (0.14 + k * 0.20))
+        bw = int(w * 0.12)
+        draw.rectangle([bx, base - int(h * bh), bx + bw, base],
+                       fill=RED if k == 3 else (200, 90, 80))
+    draw.line([(x0 + int(w * 0.08), base), (x1 - int(w * 0.08), base)],
+              fill=INK, width=2)
 
 
-def draw_clinic(draw, x, y, w, h):
-    """Clinic building with a red cross, plus measles virus circles."""
-    draw.rectangle([x, y, x + w, y + h], fill=(235, 240, 244))
-    # building
-    draw.rectangle([x + 18, y + 52, x + w - 18, y + h - 8],
-                   fill=(255, 255, 255), outline=INK, width=2)
-    draw.rectangle([x + 18, y + 52, x + w - 18, y + 76], fill=NAVY)
-    # red cross sign
-    cx, cy = x + w // 2, y + 34
-    draw.rectangle([cx - 5, cy - 12, cx + 5, cy + 12], fill=RED)
-    draw.rectangle([cx - 12, cy - 5, cx + 12, cy + 5], fill=RED)
-    # windows
-    for i in range(3):
-        draw.rectangle([x + 34 + i * 52, y + 92, x + 62 + i * 52, y + 116],
-                       fill=(180, 205, 225), outline=INK, width=1)
-    # door
-    draw.rectangle([x + w // 2 - 16, y + h - 40, x + w // 2 + 16, y + h - 8],
-                   fill=(60, 60, 60))
-    # virus circles
-    draw_virus(draw, x + 34, y + 26, 12, RED)
-    draw_virus(draw, x + w - 34, y + 26, 9, RED)
-
-
-def draw_chip(draw, x, y, w, h):
-    """AI chip over a market chart: red fall, green rebound arrow."""
-    draw.rectangle([x, y, x + w, y + h], fill=(24, 28, 36))
-    # chart line: fall then rebound
-    pts = [(x + 12, y + 30), (x + 60, y + 52), (x + 108, y + 44),
-           (x + 156, y + 78), (x + 204, y + 62)]
-    draw.line(pts, fill=(255, 80, 80), width=4, joint="curve")
-    draw.polygon([(x + 204, y + 62), (x + 188, y + 58), (x + 200, y + 76)],
-                 fill=GREEN)
-    draw.line([(x + 150, y + 88), (x + 212, y + 88)], fill=GREEN, width=3)
-    draw.polygon([(x + 212, y + 88), (x + 198, y + 82), (x + 198, y + 94)],
-                 fill=GREEN)
+def draw_nvidia(draw, box):
+    """A green chip and a steeply rising revenue chart."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(232, 244, 232))
     # chip
-    cx, cy, s = x + w // 2 - 26, y + h - 62, 52
-    for i in range(4):
-        draw.line([(cx + 8 + i * 12, cy - 8), (cx + 8 + i * 12, cy)],
-                  fill=GOLD, width=3)
-        draw.line([(cx + 8 + i * 12, cy + s), (cx + 8 + i * 12, cy + s + 8)],
-                  fill=GOLD, width=3)
-    draw.rectangle([cx, cy, cx + s, cy + s], fill=(60, 90, 60),
-                   outline=GOLD, width=2)
-    draw.rectangle([cx + 14, cy + 14, cx + s - 14, cy + s - 14],
-                   fill=(40, 60, 40), outline=GOLD, width=1)
+    cx0, cy0 = x0 + int(w * 0.10), y0 + int(h * 0.14)
+    cx1, cy1 = x0 + int(w * 0.46), y0 + int(h * 0.62)
+    for k in range(4):
+        px = cx0 + 8 + k * (cx1 - cx0 - 16) // 3
+        draw.line([(px, cy0 - 10), (px, cy0)], fill=GREEN, width=3)
+        draw.line([(px, cy1), (px, cy1 + 10)], fill=GREEN, width=3)
+    draw.rectangle([cx0, cy0, cx1, cy1], fill=(22, 110, 52))
+    draw.rectangle([cx0 + 12, cy0 + 12, cx1 - 12, cy1 - 12],
+                   outline=(160, 220, 170), width=2)
+    # rising bars
+    base = y0 + int(h * 0.90)
+    for k, bh in enumerate((0.16, 0.30, 0.52, 0.72)):
+        bx = x0 + int(w * (0.54 + k * 0.11))
+        bw = int(w * 0.07)
+        draw.rectangle([bx, base - int(h * bh), bx + bw, base],
+                       fill=GREEN if k < 3 else (16, 150, 70))
+    # arrow over the bars
+    ax0, ay0 = x0 + int(w * 0.55), y0 + int(h * 0.62)
+    ax1, ay1 = x0 + int(w * 0.94), y0 + int(h * 0.16)
+    draw.line([(ax0, ay0), (ax1, ay1)], fill=INK, width=4)
+    draw.polygon([(ax1, ay1), (ax1 - 12, ay1 + 2), (ax1 - 2, ay1 + 12)],
+                 fill=INK)
 
 
-def render():
-    img = Image.new("RGB", (W, H), PAPER)
-    d = ImageDraw.Draw(img)
+def draw_cyclone(draw, box):
+    """A spiral storm over a small island."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(226, 238, 244))
+    import math
+    cx, cy = x0 + int(w * 0.50), y0 + int(h * 0.46)
+    # spiral arms
+    for arm in range(3):
+        points = []
+        for t in range(0, 121):
+            ang = math.radians(t * 3 + arm * 120)
+            r = 4 + t * 0.42
+            points.append((cx + int(r * math.cos(ang)),
+                           cy + int(r * math.sin(ang))))
+        draw.line(points, fill=(40, 90, 140), width=5)
+    draw.ellipse([cx - 9, cy - 9, cx + 9, cy + 9], fill=(255, 255, 255),
+                 outline=(40, 90, 140), width=2)
+    # island below the storm
+    iy = y0 + int(h * 0.86)
+    draw.polygon([(x0 + int(w * 0.30), iy), (x0 + int(w * 0.44), iy - 14),
+                  (x0 + int(w * 0.58), iy - 10), (x0 + int(w * 0.72), iy)],
+                 fill=(74, 120, 80))
+    draw.rectangle([x0, iy, x1, y1], fill=SEA)
+    # rain streaks
+    for k in range(6):
+        rx = x0 + int(w * (0.10 + k * 0.15))
+        draw.line([(rx, y0 + int(h * 0.68)), (rx - 6, y0 + int(h * 0.80))],
+                  fill=(120, 160, 190), width=2)
 
-    # outer double border
-    d.rectangle([22, 22, W - 22, H - 22], outline=INK, width=3)
-    d.rectangle([30, 30, W - 30, H - 30], outline=INK, width=1)
 
-    # kicker
-    y = 48
-    y = centre(d, y, "THE DAY IN ONE PICTURE", font(SANS_BOLD, 21), RED)
-    # masthead
-    y = 76
-    centre(d, y, "THE WORLD TODAY", font(SERIF_BLACK, 88), INK)
-    # rules + dateline
-    d.rectangle([52, 168, W - 52, 174], fill=INK)
-    d.rectangle([52, 180, W - 52, 182], fill=INK)
-    centre(d, 190, "WEDNESDAY  \u00b7  18 NOVEMBER 2026",
-           font(SERIF_BOLD, 27), INK)
+def draw_ebola(draw, box):
+    """A clinic cross and a steep outbreak curve."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(243, 236, 224))
+    # clinic tent
+    tx0, ty0 = x0 + int(w * 0.08), y0 + int(h * 0.52)
+    tx1, ty1 = x0 + int(w * 0.44), y0 + int(h * 0.88)
+    draw.polygon([(tx0, ty1), (tx0, ty0 + 18), ((tx0 + tx1) // 2, ty0),
+                  (tx1, ty0 + 18), (tx1, ty1)], fill=(240, 240, 235),
+                 outline=INK)
+    draw.rectangle([tx0 + 8, ty0 + 26, tx0 + 26, ty0 + 32], fill=RED)
+    draw.rectangle([tx0 + 14, ty0 + 20, tx0 + 20, ty0 + 38], fill=RED)
+    # outbreak curve, rising steeply
+    import math
+    points = []
+    for t in range(0, 101):
+        px = x0 + int(w * (0.52 + t * 0.0044))
+        py = y0 + int(h * 0.82) - int(h * 0.55 * (t / 100.0) ** 2)
+        points.append((px, py))
+    draw.line(points, fill=RED, width=4)
+    draw.ellipse([points[-1][0] - 5, points[-1][1] - 5,
+                  points[-1][0] + 5, points[-1][1] + 5], fill=RED)
+    # small case dots along the curve
+    for t in (20, 45, 70):
+        px = x0 + int(w * (0.52 + t * 0.0044))
+        py = y0 + int(h * 0.82) - int(h * 0.55 * (t / 100.0) ** 2)
+        draw.ellipse([px - 3, py - 3, px + 3, py + 3], fill=INK)
 
-    # ---- lead panel: Crimea bridge ----
-    d.rectangle([36, 232, W - 36, 512], fill=PANEL, outline=INK, width=2)
-    draw_bridge(d, 52, 242, 920, 104)
-    fnt, lines = fit_lines(d, "UKRAINE KNOCKS OUT CRIMEA BRIDGE",
-                           SERIF_BLACK, 44, 940, 2)
-    ly = 360
-    for line in lines:
-        ly = centre(d, ly, line, fnt, INK)
-        ly += 4
-    fnt = font(SERIF, 21)
-    sub = ("Road arch falls into the Kerch Strait, two days before "
-           "the Trump\u2013Xi\u2013Putin summit.")
-    centre(d, ly + 8, sub, fnt, INK)
 
-    # ---- four columns ----
-    cols = [
-        ("GULF STRIKES ESCALATE",
-         "US jets hit a missile site on Iran's Qeshm Island; Iran fires "
-         "drones at Bahrain and Kuwait.", draw_gulf),
-        ("TRUMP FLIES TO CHINA",
-         "First-ever trilateral with Xi and Putin set for Thursday "
-         "in Shenzhen.", draw_summit),
-        ("US LOSES MEASLES-FREE STATUS",
-         "More than 5,400 cases this year, the worst outbreak in "
-         "over 30 years.", draw_clinic),
-        ("NVIDIA BEATS, MARKETS FALL",
-         "Shares jump 4% after hours on strong sales; the S&P 500 "
-         "falls 1% ahead of results.", draw_chip),
+def draw_quake(draw, box):
+    """A seismograph trace with a sharp spike."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(235, 232, 222))
+    mid = y0 + h // 2
+    pts = [(x0 + 6, mid)]
+    import math
+    for t in range(1, 40):
+        px = x0 + 6 + int(t * (w - 12) / 40)
+        amp = 2 if t < 18 else (26 if 18 <= t < 24 else 4)
+        py = mid + int(amp * math.sin(t * 2.4))
+        pts.append((px, py))
+    draw.line(pts, fill=INK, width=2)
+    # white badge behind the magnitude so the trace never crosses the text
+    bx, by = x0 + w // 2, mid
+    draw.ellipse([bx - 17, by - 15, bx + 17, by + 15], fill=(255, 255, 255),
+                 outline=RED, width=2)
+    draw.text((bx - 11, by - 10), "6.0", font=SANS_BOLD(18), fill=RED)
+
+
+def draw_dome(draw, box):
+    """The US Capitol dome, simplified, for the Senate result."""
+    x0, y0, x1, y1 = box
+    w = x1 - x0
+    h = y1 - y0
+    draw.rectangle([x0, y0, x1, y1], fill=(232, 236, 240))
+    cx = x0 + w // 2
+    base = y0 + int(h * 0.88)
+    # dome
+    draw.pieslice([cx - 34, y0 + int(h * 0.10), cx + 34, y0 + int(h * 0.62)],
+                  start=180, end=360, fill=(245, 245, 240), outline=INK)
+    draw.rectangle([cx - 3, y0 + int(h * 0.02), cx + 3, y0 + int(h * 0.12)],
+                   fill=INK)
+    # drum and columns
+    draw.rectangle([cx - 38, y0 + int(h * 0.60), cx + 38, base], fill=(245, 245, 240),
+                   outline=INK)
+    for k in range(5):
+        kx = cx - 30 + k * 15
+        draw.line([(kx, y0 + int(h * 0.64)), (kx, base)], fill=INK, width=2)
+    draw.rectangle([x0 + int(w * 0.10), base, x1 - int(w * 0.10), base + 4],
+                   fill=INK)
+
+
+# ---------------------------------------------------------------------------
+# Page assembly
+# ---------------------------------------------------------------------------
+
+def story_panel(draw, box, tag_text, headline, body, art):
+    """One grid panel: picture on top, headline and two body lines below."""
+    x0, y0, x1, y1 = box
+    panel_frame(draw, box)
+    art_h = int((y1 - y0) * 0.40)
+    art(draw, (x0 + 2, y0 + 2, x1 - 2, y0 + 2 + art_h))
+    tx = x0 + 10
+    ty = y0 + 2 + art_h + 6
+    ty = tag(draw, tx, ty, tag_text) + 5
+    head_font = SANS_BOLD(18)
+    max_w = x1 - x0 - 20
+    for line in wrap(draw, headline, head_font, max_w)[:2]:
+        draw.text((tx, ty), line, font=head_font, fill=INK)
+        ty += 21
+    body_font = SANS(13)
+    for line in wrap(draw, body, body_font, max_w)[:2]:
+        draw.text((tx, ty), line, font=body_font, fill=(60, 60, 60))
+        ty += 15
+
+
+def build_image(path):
+    img = Image.new("RGB", (WIDTH, HEIGHT), PAPER)
+    draw = ImageDraw.Draw(img)
+    m = 26                      # page margin
+    cx = WIDTH // 2
+    right = WIDTH - m
+
+    # ---- masthead ------------------------------------------------------
+    centred(draw, cx, 24, "THE WORLD TODAY", SERIF_BOLD(64))
+    rule(draw, m, right, 108, width=3)
+    centred(draw, cx, 118, "WEDNESDAY 18 NOVEMBER 2026",
+            SANS_BOLD(27), fill=RED)
+    centred(draw, cx, 150,
+            "ONE DAY IN PICTURES  \u2022  FROM CRIMEA TO THE COOK ISLANDS",
+            SANS(15), fill=(80, 80, 78))
+    rule(draw, m, right, 176, width=2)
+
+    # ---- lead story: Kerch Bridge --------------------------------------
+    lead = (m, 186, right, 436)
+    panel_frame(draw, lead)
+    draw_bridge(draw, (m + 2, 188, right - 2, 312))
+    tag(draw, m + 12, 320, "LEAD STORY  \u2022  UKRAINE")
+    draw.text((m + 12, 348), "KERCH BRIDGE FALLS INTO THE STRAIT",
+              font=SANS_BOLD(30), fill=INK)
+    deck = ("Ukraine says drones and missiles brought down a road arch of "
+            "Russia's 19 km link to Crimea \u2014 the second strike in two days.")
+    deck_font = SERIF(18)
+    ty = 388
+    for line in wrap(draw, deck, deck_font, right - m - 24):
+        draw.text((m + 12, ty), line, font=deck_font, fill=(50, 50, 50))
+        ty += 21
+
+    # ---- grid of six stories -------------------------------------------
+    cols = [(m, 336), (357, 667), (688, right)]
+    rows = [(448, 658), (670, 880)]
+    stories = [
+        ("GULF ON EDGE", "US HITS IRAN, DRONES FLY BACK",
+         "US jets hit an IRGC site on Qeshm; Iran hit back with drones "
+         "at Bahrain and Kuwait.", draw_gulf),
+        ("SHENZHEN SUMMIT", "THREE LEADERS, ONE TABLE",
+         "Trump, Xi and Putin meet Thursday; Ukraine and trade top "
+         "the agenda.", draw_summit),
+        ("HEALTH", "US LOSES MEASLES-FREE STATUS",
+         "Over 5,400 cases this year, the worst in decades, ends "
+         "26 years of elimination.", draw_measles),
+        ("MARKETS", "NVIDIA DOUBLES ITS REVENUE",
+         "Q3 sales hit $115.8bn, up 103%, in the first results since "
+         "Jensen Huang stepped down.", draw_nvidia),
+        ("WEATHER", "CYCLONE XAVIER HITS CAT 5",
+         "Winds of 220 km/h batter the Northern Cook Islands; gusts "
+         "reach 315 km/h.", draw_cyclone),
+        ("AFRICA", "EBOLA OUTBREAK SURGES IN DRC",
+         "Cases more than doubled in three months to 11,000, with "
+         "5,400 deaths, the UN says.", draw_ebola),
     ]
-    col_w, gap, top = 224, 18, 536
-    for i, (head, cap, draw_fn) in enumerate(cols):
-        x = 36 + i * (col_w + gap)
-        d.rectangle([x, top, x + col_w, top + 3], fill=RED)
-        draw_fn(d, x, top + 14, col_w, 138)
-        fnt, lines = fit_lines(d, head, SERIF_BOLD, 24, col_w, 3)
-        hy = top + 166
-        for line in lines:
-            d.text((x, hy), line, font=fnt, fill=INK)
-            hy += fnt.size + 2
-        fnt = font(SERIF, 17)
-        for line in wrap(d, cap, fnt, col_w):
-            d.text((x, hy + 6), line, font=fnt, fill=INK)
-            hy += 23
+    for (y0, y1), row in zip(rows, (stories[:3], stories[3:])):
+        for (x0, x1), (tag_text, headline, body, art) in zip(cols, row):
+            story_panel(draw, (x0, y0, x1, y1), tag_text, headline,
+                        body, art)
 
-    # ---- ticker ----
-    d.rectangle([36, 912, W - 36, 964], fill=NAVY)
-    tick = ("CYCLONE XAVIER, CAT 5, HITS COOK ISLANDS    \u2022    "
-            "EBOLA CASES PASS 11,000 IN DR CONGO    \u2022    "
-            "MAGNITUDE 6 QUAKE IN PAPUA NEW GUINEA")
-    fnt = font(SANS_BOLD, 19)
-    while d.textlength(tick, font=fnt) > 940 and fnt.size > 12:
-        fnt = font(SANS_BOLD, fnt.size - 1)
-    tw = d.textlength(tick, font=fnt)
-    d.text(((W - tw) / 2, 930), tick, font=fnt, fill=(255, 255, 255))
+    # ---- bottom strip: two short items ----------------------------------
+    strip_y0, strip_y1 = 892, 962
+    panel_frame(draw, (m, strip_y0, right, strip_y1))
+    half = (m + right) // 2
+    draw.line([(half, strip_y0 + 6), (half, strip_y1 - 6)], fill=GREY,
+              width=1)
+    # quake, left half
+    draw_quake(draw, (m + 8, strip_y0 + 6, m + 128, strip_y1 - 6))
+    qfont = SANS_BOLD(17)
+    draw.text((m + 138, strip_y0 + 10), "QUAKE SHAKES PAPUA NEW GUINEA",
+              font=qfont, fill=INK)
+    qbody = ("A shallow magnitude 6.0 quake at 10 km depth, GFZ reports. "
+             "No casualties reported yet.")
+    qbf = SANS(14)
+    ty = strip_y0 + 34
+    for line in wrap(draw, qbody, qbf, half - m - 150):
+        draw.text((m + 138, ty), line, font=qbf, fill=(60, 60, 60))
+        ty += 18
+    # senate, right half
+    draw_dome(draw, (half + 8, strip_y0 + 6, half + 128, strip_y1 - 6))
+    draw.text((half + 138, strip_y0 + 10), "DEMOCRATS TAKE 56 SENATE SEATS",
+              font=qfont, fill=INK)
+    sbody = ("Mary Peltola wins Alaska's Senate seat, giving Democrats "
+             "a 56-seat majority in the chamber.")
+    ty = strip_y0 + 34
+    for line in wrap(draw, sbody, qbf, right - half - 150):
+        draw.text((half + 138, ty), line, font=qbf, fill=(60, 60, 60))
+        ty += 18
 
-    # footer
-    centre(d, 972, "Wire reports  \u00b7  18 November 2026",
-           font(SERIF, 14), GREY)
+    # ---- footer ---------------------------------------------------------
+    centred(draw, cx, 972,
+            "All pictures drawn in code  \u2022  Sources: AP, Reuters, "
+            "Al Jazeera, NDTV, Fiji MetService, United Nations",
+            SANS(13), fill=(90, 90, 88))
 
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "entry.png")
-    img.save(out, "PNG")
-    print(f"saved {out} {img.size}")
+    img.save(path, format="PNG")
+    return path
 
 
 if __name__ == "__main__":
-    render()
+    here = os.path.dirname(os.path.abspath(__file__))
+    build_image(os.path.join(here, "entry.png"))
+    print("entry.png written")

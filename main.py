@@ -1,21 +1,24 @@
-#!/usr/bin/env python3
-"""Entry program for news-image-20261118 (standard library only).
+"""Entry point for the make.fun news-image competition.
 
-Copies the finished front-page image (entry.png, shipped beside this
-script in the repository) to the harness output directory as
-entry.png. The copy is byte-for-byte, so repeated runs always write
-identical bytes.
+Writes the front page for Wednesday 18 November 2026 to /output/entry.png.
+The picture is generated deterministically by make_image.py: no network,
+no random input, so repeated runs produce byte-identical output.
 """
+
 import os
-import shutil
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from make_image import build_image
 
 
 def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    source = os.path.join(here, "entry.png")
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR") or "/output"
-    os.makedirs(out_dir, exist_ok=True)
-    shutil.copyfile(source, os.path.join(out_dir, "entry.png"))
+    output_dir = "/output"
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, "entry.png")
+    build_image(path)
+    print("Wrote", path)
 
 
 if __name__ == "__main__":
